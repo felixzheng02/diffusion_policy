@@ -32,6 +32,8 @@ from diffusers.training_utils import EMAModel
 
 OmegaConf.register_new_resolver("eval", eval, replace=True)
 
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8" # Because deterministic behavior is enabled in predicatros_robocasa
+
 # %%
 class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
     include_keys = ['global_step', 'epoch']
@@ -98,13 +100,6 @@ class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
             last_epoch=self.global_step-1
         )
 
-        # configure ema
-        ema: EMAModel = None
-        if cfg.training.use_ema:
-            ema = hydra.utils.instantiate(
-                cfg.ema,
-                model=self.ema_model)
-
         # configure env runner
         env_runner: BaseLowdimRunner = None
         if hasattr(cfg.task, 'env_runner'):
@@ -137,6 +132,13 @@ class TrainDiffusionUnetLowdimWorkspace(BaseWorkspace):
         if self.ema_model is not None:
             self.ema_model.to(device)
         optimizer_to(self.optimizer, device)
+
+        # configure ema (after device transfer to ensure EMA is on correct device)
+        ema: EMAModel = None
+        if cfg.training.use_ema:
+            ema = hydra.utils.instantiate(
+                cfg.ema,
+                model=self.ema_model)
 
         # save batch for sampling
         train_sampling_batch = None
